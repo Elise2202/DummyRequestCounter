@@ -2,14 +2,17 @@ name: CI/CD
 
 on:
   push:
-    branches: [ "**" ]
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
+# avoid overlapping runs on the same ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE_NAME: dummyrequestcounter
-  REGISTRY: docker.io
-  # Will push to: docker.io/${{ secrets.DOCKER_USERNAME }}/dummyrequestcounter:latest
   DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/dummyrequestcounter
   DOCKER_TAG: latest
 
@@ -18,11 +21,9 @@ jobs:
     name: Code quality (flake8 + bandit)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -32,55 +33,55 @@ jobs:
           pip install flake8 bandit
 
       - name: flake8 (app + tests)
-        run: |
-          flake8 app tests
+        run: flake8 app tests
 
-      - name: bandit (security static analysis)
-        run: |
-          bandit -q -r app -x tests
+      - name: bandit (SAST on app/)
+        run: bandit -q -r app -ll -ii
 
-    test:
+  test:
     name: Unit tests (pytest)
     runs-on: ubuntu-latest
     needs: [lint]
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # safety net in case httpx is missing from requirements
+          pip install httpx pytest
+
       - name: Run pytest
         env:
-          PYTHONPATH: ${{ github.workspace }}   # <-- add this
-        run: |
-          pytest -v
-
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -v
 
   build:
-    name: Build Docker image + container smoke test
+    name: Build Docker image + smoke test
     runs-on: ubuntu-latest
     needs: [test]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Build (load to local Docker)
+      - name: Build (load into local Docker)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          load: true                # loads image into local Docker daemon
+          load: true
           tags: ${{ env.DOCKER_REPO }}:ci-${{ github.run_number }}
 
-      - name: Run ephemeral test stack
+      - name: Smoke test with Redis + web
         run: |
+          set -e
           docker network create testnet
           docker run -d --name redis --network testnet redis:7-alpine
           docker run -d --name web \
@@ -89,43 +90,42 @@ jobs:
             -p 5000:5000 \
             ${{ env.DOCKER_REPO }}:ci-${{ github.run_number }}
 
-          # wait for app to become healthy
-          for i in {1..15}; do
-            curl -fsS http://localhost:5000/health && break
+          # wait for health
+          for i in {1..20}; do
+            if curl -fsS http://localhost:5000/health >/dev/null; then break; fi
             sleep 2
           done
 
-          # basic checks
           curl -fsS http://localhost:5000/health | grep -i ok
           curl -fsS http://localhost:5000/
           curl -fsS -X POST http://localhost:5000/reset
 
-      - name: Tear down test stack
+      - name: Tear down
         if: always()
         run: |
           docker rm -f web || true
           docker rm -f redis || true
           docker network rm testnet || true
 
-  scan-image:
+  scan:
     name: Container vulnerability scan (Trivy)
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - name: Install Trivy
+      - name: Scan image
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          scan-type: 'image'
+          scan-type: image
           image-ref: ${{ env.DOCKER_REPO }}:ci-${{ github.run_number }}
-          format: 'table'
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'         # do not fail the pipeline for demo; set to 1 to enforce
+          format: table
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          exit-code: 0    # set to 1 to fail the pipeline on findings
 
   push:
     name: Push image to Docker Hub (CD)
     runs-on: ubuntu-latest
-    needs: [scan-image]
+    needs: [scan]
     steps:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -133,7 +133,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Re-build and push (cache from CI tag)
+      - name: Build & push (final tags)
         uses: docker/build-push-action@v5
         with:
           context: .
