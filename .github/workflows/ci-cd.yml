@@ -13,6 +13,7 @@ concurrency:
 
 env:
   IMAGE_NAME: dummyrequestcounter
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/dummyrequestcounter
   DOCKER_TAG: latest
 
