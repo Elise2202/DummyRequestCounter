@@ -1,0 +1,28 @@
+name: CI/CD Pipeline (starter)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+
+jobs:
+  sanity:
+    name: Workflow sanity check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Show repo tree
+        run: |
+          pwd
+          ls -la
+
+      - name: Print Python & Docker versions
+        run: |
+          python3 --version || true
+          docker --version || true
+
+      - name: Echo next steps
+        run: |
+          echo "Workflow is connected. In Task 2, we'll add tests."
