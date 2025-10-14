@@ -1,5 +1,12 @@
+import os
+import sys
+
+# Ensure repo root is on sys.path so "import app" works in CI runners
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from fastapi.testclient import TestClient
 from app.app import app
+
 
 
 class FakeRedis:
