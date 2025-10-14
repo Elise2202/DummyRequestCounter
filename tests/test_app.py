@@ -1,6 +1,6 @@
 # tests/test_app.py
 from fastapi.testclient import TestClient
-from app.app import app, COUNTER_KEY
+from app.app import app
 
 # --- A tiny in-memory fake Redis so tests don't need the real server ---
 class FakeRedis:
@@ -25,11 +25,13 @@ def patch_redis(monkeypatch):
 
 client = TestClient(app)
 
+
 def test_health_endpoint():
     r = client.get("/health")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
+
 
 def test_counter_increments(monkeypatch):
     patch_redis(monkeypatch)
@@ -38,6 +40,7 @@ def test_counter_increments(monkeypatch):
     assert r1.status_code == 200 and r2.status_code == 200
     assert r1.json()["hits"] == "1"
     assert r2.json()["hits"] == "2"
+
 
 def test_reset(monkeypatch):
     patch_redis(monkeypatch)
@@ -49,3 +52,5 @@ def test_reset(monkeypatch):
     # after reset, first hit should be 1 again
     r = client.get("/")
     assert r.json()["hits"] == "1"
+
+
