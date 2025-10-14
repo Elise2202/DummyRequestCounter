@@ -13,15 +13,22 @@ class FakeRedis:
 
     def get(self, key):
         v = self.store.get(key)
-        return None if v is None else str(v)  # app expects a str from redis client
+        # app expects a str from redis client
+        return (
+            None if v is None else str(v)
+        )
 
     def delete(self, key):
         self.store.pop(key, None)
 
+
 # Helper to replace the global redis client inside the app during tests
+
+
 def patch_redis(monkeypatch):
     from app import app as app_module  # this is the app.py module inside app/
     monkeypatch.setattr(app_module, "redis", FakeRedis())
+
 
 client = TestClient(app)
 
@@ -52,5 +59,3 @@ def test_reset(monkeypatch):
     # after reset, first hit should be 1 again
     r = client.get("/")
     assert r.json()["hits"] == "1"
-
-
