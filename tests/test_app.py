@@ -1,11 +1,11 @@
+from fastapi.testclient import TestClient
+from app.app import app
 import os
 import sys
 
+
 # Ensure repo root is on sys.path so "import app" works in CI
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from fastapi.testclient import TestClient
-from app.app import app
 
 
 class FakeRedis:
@@ -28,7 +28,7 @@ class FakeRedis:
 
 def patch_redis(monkeypatch):
     # Replace the global redis client inside the application during tests
-    from app import app as app_module  # import here to avoid circular import
+    from app import app as app_module  # imported here to avoid circular import
     monkeypatch.setattr(app_module, "redis", FakeRedis())
 
 
