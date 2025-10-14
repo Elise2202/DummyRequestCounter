@@ -1,12 +1,11 @@
 import os
 import sys
 
-# Ensure repo root is on sys.path so "import app" works in CI runners
+# Ensure repo root is on sys.path so "import app" works in CI
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi.testclient import TestClient
 from app.app import app
-
 
 
 class FakeRedis:
@@ -29,7 +28,7 @@ class FakeRedis:
 
 def patch_redis(monkeypatch):
     # Replace the global redis client inside the application during tests
-    from app import app as app_module  # import the module that contains "redis"
+    from app import app as app_module  # import here to avoid circular import
     monkeypatch.setattr(app_module, "redis", FakeRedis())
 
 
@@ -44,10 +43,8 @@ def test_health_endpoint():
 
 def test_counter_increments(monkeypatch):
     patch_redis(monkeypatch)
-
     r1 = client.get("/")
     r2 = client.get("/")
-
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert r1.json()["hits"] == "1"
@@ -56,15 +53,9 @@ def test_counter_increments(monkeypatch):
 
 def test_reset(monkeypatch):
     patch_redis(monkeypatch)
-
-    # bump once
-    client.get("/")
-
-    # reset
+    client.get("/")  # bump once
     r = client.post("/reset")
     assert r.status_code == 200
     assert r.json()["reset"] is True
-
-    # first hit after reset should be 1
-    r = client.get("/")
+    r = client.get("/")  # first hit after reset
     assert r.json()["hits"] == "1"
